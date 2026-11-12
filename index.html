@@ -23,7 +23,11 @@
       margin-bottom: 6px;
     }
     h1 { color: #38bdf8; margin: 0; font-size: 1.9rem; }
-    .mute-btn {
+    .header-btns {
+      display: flex;
+      gap: 8px;
+    }
+    .top-btn {
       background: #1e293b;
       color: #cbd5e1;
       border: 1px solid #334155;
@@ -32,8 +36,25 @@
       font-size: 0.85rem;
       cursor: pointer;
     }
-    .mute-btn:hover { border-color: #38bdf8; color: #fff; }
-    .subtitle { color: #94a3b8; margin-bottom: 20px; text-align: center; }
+    .top-btn:hover { border-color: #38bdf8; color: #fff; }
+    .subtitle { color: #94a3b8; margin-bottom: 16px; text-align: center; }
+
+    .hint-ticker {
+      background: #1e293b;
+      border: 1px dashed #38bdf8;
+      color: #7dd3fc;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      width: 580px;
+      max-width: 95%;
+      text-align: center;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
     .hud {
       display: flex;
@@ -58,6 +79,7 @@
       width: 580px;
       max-width: 95%;
       box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+      position: relative;
     }
     .packet-tag {
       display: inline-block;
@@ -117,9 +139,10 @@
     .feedback {
       margin-top: 14px;
       font-weight: 600;
-      min-height: 26px;
+      min-height: 32px;
       text-align: center;
-      font-size: 0.96rem;
+      font-size: 0.93rem;
+      line-height: 1.35;
     }
     .summary-box {
       text-align: center;
@@ -140,15 +163,68 @@
     }
     .stat-val { font-size: 1.4rem; font-weight: bold; color: #4ade80; }
     .stat-lbl { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(2, 6, 23, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .modal-card {
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      border-radius: 14px;
+      padding: 24px;
+      width: 540px;
+      max-width: 90%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .modal-header h3 { margin: 0; color: #38bdf8; }
+    .close-modal {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+    .close-modal:hover { color: #fff; }
+    .notes-list {
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      margin: 12px 0 0 0;
+      padding-left: 18px;
+      line-height: 1.4;
+    }
+    .notes-list li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
 
   <div class="header-row">
     <h1>🏥 FHIR Triage Rush</h1>
-    <button class="mute-btn" id="mute-btn" onclick="toggleMute()">🔊 Sound On</button>
+    <div class="header-btns">
+      <button class="top-btn" onclick="openModal()">🔍 Sample Packet</button>
+      <button class="top-btn" id="mute-btn" onclick="toggleMute()">🔊 Sound On</button>
+    </div>
   </div>
   <div class="subtitle">30-Second Shift: Admit clean FHIR R4 &amp; DICOM packets—reject malformed ones!</div>
+
+  <div class="hint-ticker" id="hint-ticker">
+    💡 <strong>FHIR Hint:</strong> Every valid resource requires a 'resourceType' key (e.g., Patient, ImagingStudy).
+  </div>
 
   <div class="hud">
     <div>Time: <span id="timer">30</span>s</div>
@@ -161,7 +237,7 @@
       <h2>Ready for Triage?</h2>
       <p style="color:#cbd5e1; line-height:1.5;">
         Inspect incoming <strong>FHIR R4</strong> and <strong>DICOM ImagingStudy</strong> payloads before they hit the EHR.
-        Watch out for missing <code>resourceType</code> fields, invalid dates, wrong DICOM modalities, or inactive patient records.
+        Watch the hint ticker above for quick interoperability tips!
       </p>
       <button class="btn-start" onclick="startGame()">▶ Start 30-Second Shift</button>
     </div>
@@ -171,7 +247,7 @@
       <pre id="json-display"></pre>
       <div class="buttons">
         <button class="action-btn btn-admit" id="btn-admit" onclick="checkAnswer(true)">✅ Admit to EHR</button>
-        <button class="action-btn btn-reject" id="btn-reject" onclick="checkAnswer(false)">�� Reject Bad Packet</button>
+        <button class="action-btn btn-reject" id="btn-reject" onclick="checkAnswer(false)">🚨 Reject Bad Packet</button>
       </div>
       <div class="feedback" id="feedback"></div>
     </div>
@@ -196,12 +272,48 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="sample-modal" onclick="handleModalClick(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📖 Reference: Valid FHIR Patient</h3>
+        <button class="close-modal" onclick="closeModal()">&times;</button>
+      </div>
+      <p style="font-size:0.9rem; color:#94a3b8; margin:0 0 10px 0;">
+        A compliant FHIR R4 Patient record must contain all required resource attributes and standards-based formatting:
+      </p>
+      <pre>{
+  "resourceType": "Patient",
+  "id": "pat-8841",
+  "active": true,
+  "name": [
+    { "family": "Miller", "given": ["Sarah"] }
+  ],
+  "gender": "female",
+  "birthDate": "1989-04-12"
+}</pre>
+      <ul class="notes-list">
+        <li><strong>resourceType:</strong> Mandatory routing key for EHR endpoints.</li>
+        <li><strong>active:</strong> Inactive records (false) are rejected from admission.</li>
+        <li><strong>birthDate:</strong> Must strictly use ISO date format (YYYY-MM-DD).</li>
+      </ul>
+    </div>
+  </div>
+
   <script>
+    const fhirHints = [
+      "💡 FHIR Hint: Every valid resource requires a 'resourceType' key (e.g., Patient, ImagingStudy).",
+      "💡 FHIR Hint: Patient birthdates must strictly adhere to the YYYY-MM-DD ISO date format.",
+      "💡 DICOM Hint: ImagingStudy modality codes must use standard DCM ontology values (e.g., 'MR' for magnetic resonance).",
+      "�� Revenue Cycle Hint: ServiceRequests must contain a valid 'subject' reference to link the order to a patient.",
+      "💡 Interoperability Hint: Inactive patient records (`active: false`) are blocked from EHR admission."
+    ];
+
     const allPackets = [
       {
         tag: "Patient • Intake",
         valid: true,
         reason: "Clean FHIR Patient resource! Ready for intake.",
+        errorReason: "Incorrect Rejection! This packet was fully valid: it had a 'resourceType' of Patient, active status, and a proper ISO birthdate.",
         data: {
           resourceType: "Patient",
           id: "pat-8841",
@@ -215,6 +327,7 @@
         tag: "Patient • Intake",
         valid: false,
         reason: "Missing 'resourceType'—FHIR endpoint cannot route this payload.",
+        errorReason: "Incorrect Admission! The EHR server rejected this because it lacked a 'resourceType' property, making endpoint routing impossible.",
         data: {
           id: "pat-9920",
           active: true,
@@ -227,6 +340,7 @@
         tag: "Patient • Registration",
         valid: false,
         reason: "'birthDate' must follow YYYY-MM-DD format in FHIR, not 'TBD'.",
+        errorReason: "Incorrect Admission! FHIR parsers reject non-standard date strings like 'TBD'—dates must be formatted as YYYY-MM-DD.",
         data: {
           resourceType: "Patient",
           id: "pat-3310",
@@ -240,6 +354,7 @@
         tag: "ImagingStudy • DICOM MRI",
         valid: true,
         reason: "Valid DICOM MR ImagingStudy packet! Ready for PACS routing.",
+        errorReason: "Incorrect Rejection! This ImagingStudy packet correctly used modality code 'MR' and included series/instance counts.",
         data: {
           resourceType: "ImagingStudy",
           id: "mri-brain-774",
@@ -254,6 +369,7 @@
         tag: "ImagingStudy • DICOM Error",
         valid: false,
         reason: "Invalid DICOM modality 'MRI-SCAN'—standard DICOM code must be 'MR'.",
+        errorReason: "Incorrect Admission! PACS servers require standard DICOM DCM codes ('MR'), not custom text strings like 'MRI-SCAN'.",
         data: {
           resourceType: "ImagingStudy",
           id: "mri-cspine-402",
@@ -267,6 +383,7 @@
         tag: "Patient • Status Check",
         valid: false,
         reason: "'active' is false—archived/merged record should not be admitted.",
+        errorReason: "Incorrect Admission! Admitting an inactive (`active: false`) record causes chart duplication and merge errors in the EHR.",
         data: {
           resourceType: "Patient",
           id: "pat-0012",
@@ -280,6 +397,7 @@
         tag: "ServiceRequest • Radiology Order",
         valid: true,
         reason: "Valid STAT MRI Lumbar Spine order with active status and CPT code.",
+        errorReason: "Incorrect Rejection! This ServiceRequest was fully compliant with active status, CPT code, and a patient reference.",
         data: {
           resourceType: "ServiceRequest",
           id: "ord-5519",
@@ -294,6 +412,7 @@
         tag: "ServiceRequest • Order Error",
         valid: false,
         reason: "Missing 'subject' patient reference—orphan order cannot be scheduled.",
+        errorReason: "Incorrect Admission! Orders without a `subject` patient reference become orphaned in the system and cannot be scheduled.",
         data: {
           resourceType: "ServiceRequest",
           id: "ord-6102",
@@ -306,6 +425,7 @@
         tag: "Coverage • Revenue Cycle",
         valid: true,
         reason: "Valid active insurance Coverage resource linked to subscriber.",
+        errorReason: "Incorrect Rejection! This Coverage resource contained active status, a valid subscriber ID, and a beneficiary reference.",
         data: {
           resourceType: "Coverage",
           id: "cov-2094",
@@ -319,6 +439,7 @@
         tag: "ImagingStudy • PACS Routing",
         valid: false,
         reason: "Study status is 'cancelled' with 0 instances—do not push to PACS.",
+        errorReason: "Incorrect Admission! Cancelled studies with 0 image instances will throw a PACS fault if routed to workstations.",
         data: {
           resourceType: "ImagingStudy",
           id: "mri-knee-908",
@@ -338,6 +459,7 @@
     let totalCorrect = 0;
     let timeLeft = 30;
     let timerInterval = null;
+    let hintInterval = null;
     let locked = false;
     let muted = false;
 
@@ -383,6 +505,30 @@
       document.getElementById("mute-btn").textContent = muted ? "🔇 Muted" : "🔊 Sound On";
     }
 
+    function openModal() {
+      document.getElementById("sample-modal").classList.add("active");
+    }
+
+    function closeModal() {
+      document.getElementById("sample-modal").classList.remove("active");
+    }
+
+    function handleModalClick(e) {
+      if (e.target.id === "sample-modal") {
+        closeModal();
+      }
+    }
+
+    function rotateHints() {
+      const ticker = document.getElementById("hint-ticker");
+      const randomHint = fhirHints[Math.floor(Math.random() * fhirHints.length)];
+      ticker.style.opacity = 0;
+      setTimeout(() => {
+        ticker.innerHTML = randomHint;
+        ticker.style.opacity = 1;
+      }, 200);
+    }
+
     function shuffle(array) {
       const copy = [...array];
       for (let i = copy.length - 1; i > 0; i--) {
@@ -416,6 +562,10 @@
       loadPacket();
 
       clearInterval(timerInterval);
+      clearInterval(hintInterval);
+      
+      hintInterval = setInterval(rotateHints, 6000);
+
       timerInterval = setInterval(() => {
         timeLeft--;
         timerEl.textContent = timeLeft;
@@ -467,7 +617,7 @@
       } else {
         streak = 0;
         fb.style.color = "#f87171";
-        fb.textContent = `✖ ${item.reason}`;
+        fb.textContent = `✖ ${item.errorReason}`;
         playError();
       }
 
@@ -480,11 +630,12 @@
           fb.textContent = "";
           loadPacket();
         }
-      }, 1150);
+      }, 2100);
     }
 
     function endGame() {
       clearInterval(timerInterval);
+      clearInterval(hintInterval);
       locked = true;
       playEnd();
 
