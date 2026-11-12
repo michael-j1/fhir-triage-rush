@@ -39,23 +39,6 @@
     .top-btn:hover { border-color: #38bdf8; color: #fff; }
     .subtitle { color: #94a3b8; margin-bottom: 16px; text-align: center; }
 
-    .hint-ticker {
-      background: #1e293b;
-      border: 1px dashed #38bdf8;
-      color: #7dd3fc;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      margin-bottom: 16px;
-      width: 580px;
-      max-width: 95%;
-      text-align: center;
-      min-height: 38px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
     .hud {
       display: flex;
       gap: 24px;
@@ -75,8 +58,8 @@
       background: #1e293b;
       border: 1px solid #38bdf8;
       border-radius: 14px;
-      padding: 22px;
-      width: 580px;
+      padding: 24px;
+      width: 600px;
       max-width: 95%;
       box-shadow: 0 12px 30px rgba(0,0,0,0.45);
       position: relative;
@@ -132,7 +115,7 @@
       border: none;
       border-radius: 10px;
       cursor: pointer;
-      margin-top: 14px;
+      margin-top: 20px;
     }
     .btn-start:hover { background: #7dd3fc; }
 
@@ -145,10 +128,29 @@
       line-height: 1.35;
     }
     .summary-box {
-      text-align: center;
-      padding: 12px 0;
+      text-align: left;
+      padding: 4px 0;
     }
-    .summary-box h2 { color: #38bdf8; margin-top: 0; }
+    .summary-box h2 { color: #38bdf8; margin-top: 0; text-align: center; margin-bottom: 14px; }
+    
+    .briefing-list {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0;
+    }
+    .briefing-list li {
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .briefing-list li span { color: #4ade80; font-weight: bold; }
+
     .stat-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -160,6 +162,7 @@
       padding: 12px;
       border-radius: 10px;
       border: 1px solid #334155;
+      text-align: center;
     }
     .stat-val { font-size: 1.4rem; font-weight: bold; color: #4ade80; }
     .stat-lbl { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; }
@@ -216,30 +219,46 @@
   <div class="header-row">
     <h1>🏥 FHIR Triage Rush</h1>
     <div class="header-btns">
-      <button class="top-btn" onclick="openModal()">🔍 Sample Packet</button>
+      <button class="top-btn" onclick="openModal()">🔍 Sample Reference</button>
       <button class="top-btn" id="mute-btn" onclick="toggleMute()">🔊 Sound On</button>
     </div>
   </div>
-  <div class="subtitle">30-Second Shift: Admit clean FHIR R4 &amp; DICOM packets—reject malformed ones!</div>
+  <div class="subtitle">30-Second Interoperability &amp; EHR Intake Challenge</div>
 
-  <div class="hint-ticker" id="hint-ticker">
-    💡 <strong>FHIR Hint:</strong> Every valid resource requires a 'resourceType' key (e.g., Patient, ImagingStudy).
-  </div>
-
-  <div class="hud">
+  <div class="hud" id="hud-container" style="display:none;">
     <div>Time: <span id="timer">30</span>s</div>
     <div>Score: <span id="score">0</span></div>
     <div>Streak: <span id="streak">0</span> 🔥</div>
   </div>
 
   <div class="card" id="game-card">
-    <div id="intro-screen" class="summary-box">
-      <h2>Ready for Triage?</h2>
-      <p style="color:#cbd5e1; line-height:1.5;">
-        Inspect incoming <strong>FHIR R4</strong> and <strong>DICOM ImagingStudy</strong> payloads before they hit the EHR.
-        Watch the hint ticker above for quick interoperability tips!
+    
+    <div id="briefing-screen" class="summary-box">
+      <h2>📋 Intake Analyst Briefing</h2>
+      <p style="color:#cbd5e1; font-size: 0.93rem; line-height: 1.5; margin-bottom: 14px;">
+        Welcome to your shift. Incoming JSON packets from external systems must be inspected for compliance before entering the EHR. Review these <strong>Must-Haves</strong> before you begin:
       </p>
-      <button class="btn-start" onclick="startGame()">▶ Start 30-Second Shift</button>
+
+      <ul class="briefing-list">
+        <li>
+          <span>✔</span>
+          <div><strong>Resource Type Required:</strong> Every payload must specify a valid <code>resourceType</code> (e.g., <code>Patient</code>, <code>ImagingStudy</code>, <code>ServiceRequest</code>). Missing types fail endpoint routing.</div>
+        </li>
+        <li>
+          <span>✔</span>
+          <div><strong>ISO Date Formatting:</strong> Patient birthdates must follow the strict <code>YYYY-MM-DD</code> ISO standard. Custom text entries like <code>"TBD"</code> will crash parsers.</div>
+        </li>
+        <li>
+          <span>✔</span>
+          <div><strong>Active Patient Status:</strong> Patient records must have <code>active: true</code>. Archived, merged, or inactive files must be rejected.</div>
+        </li>
+        <li>
+          <span>✔</span>
+          <div><strong>Standard DICOM Modalities:</strong> Radiology orders and imaging studies must use standard ontology codes (e.g., <code>"MR"</code> for magnetic resonance, not custom strings).</div>
+        </li>
+      </ul>
+
+      <button class="btn-start" onclick="startShift()">▶ Enter Triage &amp; Start Shift</button>
     </div>
 
     <div id="play-screen" style="display:none;">
@@ -252,7 +271,7 @@
       <div class="feedback" id="feedback"></div>
     </div>
 
-    <div id="end-screen" class="summary-box" style="display:none;">
+    <div id="end-screen" class="summary-box" style="display:none; text-align:center;">
       <h2>⏱ Shift Complete!</h2>
       <div class="stat-grid">
         <div class="stat">
@@ -268,7 +287,7 @@
           <div class="stat-lbl">Accuracy</div>
         </div>
       </div>
-      <button class="btn-start" onclick="startGame()">↻ Play Another Shift</button>
+      <button class="btn-start" onclick="resetToBriefing()">↻ Return to Briefing</button>
     </div>
   </div>
 
@@ -300,14 +319,6 @@
   </div>
 
   <script>
-    const fhirHints = [
-      "💡 FHIR Hint: Every valid resource requires a 'resourceType' key (e.g., Patient, ImagingStudy).",
-      "💡 FHIR Hint: Patient birthdates must strictly adhere to the YYYY-MM-DD ISO date format.",
-      "💡 DICOM Hint: ImagingStudy modality codes must use standard DCM ontology values (e.g., 'MR' for magnetic resonance).",
-      "�� Revenue Cycle Hint: ServiceRequests must contain a valid 'subject' reference to link the order to a patient.",
-      "💡 Interoperability Hint: Inactive patient records (`active: false`) are blocked from EHR admission."
-    ];
-
     const allPackets = [
       {
         tag: "Patient • Intake",
@@ -459,7 +470,6 @@
     let totalCorrect = 0;
     let timeLeft = 30;
     let timerInterval = null;
-    let hintInterval = null;
     let locked = false;
     let muted = false;
 
@@ -519,16 +529,6 @@
       }
     }
 
-    function rotateHints() {
-      const ticker = document.getElementById("hint-ticker");
-      const randomHint = fhirHints[Math.floor(Math.random() * fhirHints.length)];
-      ticker.style.opacity = 0;
-      setTimeout(() => {
-        ticker.innerHTML = randomHint;
-        ticker.style.opacity = 1;
-      }, 200);
-    }
-
     function shuffle(array) {
       const copy = [...array];
       for (let i = copy.length - 1; i > 0; i--) {
@@ -538,7 +538,7 @@
       return copy;
     }
 
-    function startGame() {
+    function startShift() {
       score = 0;
       streak = 0;
       totalAnswered = 0;
@@ -554,18 +554,15 @@
       timerEl.textContent = timeLeft;
       timerEl.className = "";
 
-      document.getElementById("intro-screen").style.display = "none";
+      document.getElementById("briefing-screen").style.display = "none";
       document.getElementById("end-screen").style.display = "none";
       document.getElementById("play-screen").style.display = "block";
+      document.getElementById("hud-container").style.display = "flex";
       document.getElementById("feedback").textContent = "";
 
       loadPacket();
 
       clearInterval(timerInterval);
-      clearInterval(hintInterval);
-      
-      hintInterval = setInterval(rotateHints, 6000);
-
       timerInterval = setInterval(() => {
         timeLeft--;
         timerEl.textContent = timeLeft;
@@ -581,6 +578,14 @@
           endGame();
         }
       }, 1000);
+    }
+
+    function resetToBriefing() {
+      clearInterval(timerInterval);
+      document.getElementById("play-screen").style.display = "none";
+      document.getElementById("end-screen").style.display = "none";
+      document.getElementById("hud-container").style.display = "none";
+      document.getElementById("briefing-screen").style.display = "block";
     }
 
     function loadPacket() {
@@ -635,7 +640,6 @@
 
     function endGame() {
       clearInterval(timerInterval);
-      clearInterval(hintInterval);
       locked = true;
       playEnd();
 
