@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FHIR Triage Rush</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 16px;
+      margin: 0;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    h1 { color: #38bdf8; margin: 0; font-size: 1.9rem; }
+    .mute-btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .mute-btn:hover { border-color: #38bdf8; color: #fff; }
+    .subtitle { color: #94a3b8; margin-bottom: 20px; text-align: center; }
+
+    .hud {
+      display: flex;
+      gap: 24px;
+      font-size: 1.15rem;
+      font-weight: 600;
+      background: #1e293b;
+      padding: 12px 26px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid #334155;
+    }
+    .timer-warn { color: #fbbf24; }
+    .timer-crit { color: #f87171; animation: pulse 0.6s infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.45; } }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      border-radius: 14px;
+      padding: 22px;
+      width: 580px;
+      max-width: 95%;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+    }
+    .packet-tag {
+      display: inline-block;
+      background: #0284c7;
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    pre {
+      background: #020617;
+      color: #4ade80;
+      padding: 16px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      margin: 0;
+      border: 1px solid #1e293b;
+    }
+    .buttons {
+      display: flex;
+      gap: 14px;
+      margin-top: 18px;
+    }
+    button.action-btn {
+      flex: 1;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.08s, opacity 0.15s;
+    }
+    button.action-btn:active { transform: scale(0.97); }
+    button.action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-admit { background: #22c55e; color: #052e16; }
+    .btn-reject { background: #ef4444; color: #fff; }
+    .btn-start {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 14px;
+    }
+    .btn-start:hover { background: #7dd3fc; }
+
+    .feedback {
+      margin-top: 14px;
+      font-weight: 600;
+      min-height: 26px;
+      text-align: center;
+      font-size: 0.96rem;
+    }
+    .summary-box {
+      text-align: center;
+      padding: 12px 0;
+    }
+    .summary-box h2 { color: #38bdf8; margin-top: 0; }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .stat {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+    }
+    .stat-val { font-size: 1.4rem; font-weight: bold; color: #4ade80; }
+    .stat-lbl { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <div class="header-row">
+    <h1>🏥 FHIR Triage Rush</h1>
+    <button class="mute-btn" id="mute-btn" onclick="toggleMute()">🔊 Sound On</button>
+  </div>
+  <div class="subtitle">30-Second Shift: Admit clean FHIR R4 &amp; DICOM packets—reject malformed ones!</div>
+
+  <div class="hud">
+    <div>Time: <span id="timer">30</span>s</div>
+    <div>Score: <span id="score">0</span></div>
+    <div>Streak: <span id="streak">0</span> 🔥</div>
+  </div>
+
+  <div class="card" id="game-card">
+    <div id="intro-screen" class="summary-box">
+      <h2>Ready for Triage?</h2>
+      <p style="color:#cbd5e1; line-height:1.5;">
+        Inspect incoming <strong>FHIR R4</strong> and <strong>DICOM ImagingStudy</strong> payloads before they hit the EHR.
+        Watch out for missing <code>resourceType</code> fields, invalid dates, wrong DICOM modalities, or inactive patient records.
+      </p>
+      <button class="btn-start" onclick="startGame()">▶ Start 30-Second Shift</button>
+    </div>
+
+    <div id="play-screen" style="display:none;">
+      <div class="packet-tag" id="packet-tag">FHIR R4 PAYLOAD</div>
+      <pre id="json-display"></pre>
+      <div class="buttons">
+        <button class="action-btn btn-admit" id="btn-admit" onclick="checkAnswer(true)">✅ Admit to EHR</button>
+        <button class="action-btn btn-reject" id="btn-reject" onclick="checkAnswer(false)">�� Reject Bad Packet</button>
+      </div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <div id="end-screen" class="summary-box" style="display:none;">
+      <h2>⏱ Shift Complete!</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-val" id="final-score">0</div>
+          <div class="stat-lbl">Final Score</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="final-reviewed">0</div>
+          <div class="stat-lbl">Packets Triaged</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="final-accuracy">0%</div>
+          <div class="stat-lbl">Accuracy</div>
+        </div>
+      </div>
+      <button class="btn-start" onclick="startGame()">↻ Play Another Shift</button>
+    </div>
+  </div>
+
+  <script>
+    const allPackets = [
+      {
+        tag: "Patient • Intake",
+        valid: true,
+        reason: "Clean FHIR Patient resource! Ready for intake.",
+        data: {
+          resourceType: "Patient",
+          id: "pat-8841",
+          active: true,
+          name: [{ family: "Miller", given: ["Sarah"] }],
+          gender: "female",
+          birthDate: "1989-04-12"
+        }
+      },
+      {
+        tag: "Patient • Intake",
+        valid: false,
+        reason: "Missing 'resourceType'—FHIR endpoint cannot route this payload.",
+        data: {
+          id: "pat-9920",
+          active: true,
+          name: [{ family: "Vance", given: ["Marcus"] }],
+          gender: "male",
+          birthDate: "1975-11-03"
+        }
+      },
+      {
+        tag: "Patient • Registration",
+        valid: false,
+        reason: "'birthDate' must follow YYYY-MM-DD format in FHIR, not 'TBD'.",
+        data: {
+          resourceType: "Patient",
+          id: "pat-3310",
+          active: true,
+          name: [{ family: "Chen", given: ["David"] }],
+          gender: "male",
+          birthDate: "TBD"
+        }
+      },
+      {
+        tag: "ImagingStudy • DICOM MRI",
+        valid: true,
+        reason: "Valid DICOM MR ImagingStudy packet! Ready for PACS routing.",
+        data: {
+          resourceType: "ImagingStudy",
+          id: "mri-brain-774",
+          status: "available",
+          modality: [{ system: "http://dicom.nema.org/resources/ontology/DCM", code: "MR" }],
+          subject: { reference: "Patient/pat-8841" },
+          numberOfSeries: 6,
+          numberOfInstances: 184
+        }
+      },
+      {
+        tag: "ImagingStudy • DICOM Error",
+        valid: false,
+        reason: "Invalid DICOM modality 'MRI-SCAN'—standard DICOM code must be 'MR'.",
+        data: {
+          resourceType: "ImagingStudy",
+          id: "mri-cspine-402",
+          status: "available",
+          modality: [{ system: "http://dicom.nema.org/resources/ontology/DCM", code: "MRI-SCAN" }],
+          subject: { reference: "Patient/pat-1129" },
+          numberOfSeries: 4
+        }
+      },
+      {
+        tag: "Patient • Status Check",
+        valid: false,
+        reason: "'active' is false—archived/merged record should not be admitted.",
+        data: {
+          resourceType: "Patient",
+          id: "pat-0012",
+          active: false,
+          name: [{ family: "Doe", given: ["John"] }],
+          gender: "male",
+          birthDate: "1964-08-22"
+        }
+      },
+      {
+        tag: "ServiceRequest • Radiology Order",
+        valid: true,
+        reason: "Valid STAT MRI Lumbar Spine order with active status and CPT code.",
+        data: {
+          resourceType: "ServiceRequest",
+          id: "ord-5519",
+          status: "active",
+          intent: "order",
+          priority: "stat",
+          code: { coding: [{ system: "http://www.ama-assn.org/go/cpt", code: "72148", display: "MRI Lumbar Spine" }] },
+          subject: { reference: "Patient/pat-8841" }
+        }
+      },
+      {
+        tag: "ServiceRequest • Order Error",
+        valid: false,
+        reason: "Missing 'subject' patient reference—orphan order cannot be scheduled.",
+        data: {
+          resourceType: "ServiceRequest",
+          id: "ord-6102",
+          status: "active",
+          intent: "order",
+          code: { coding: [{ system: "http://www.ama-assn.org/go/cpt", code: "70553", display: "MRI Brain w/ & w/o" }] }
+        }
+      },
+      {
+        tag: "Coverage • Revenue Cycle",
+        valid: true,
+        reason: "Valid active insurance Coverage resource linked to subscriber.",
+        data: {
+          resourceType: "Coverage",
+          id: "cov-2094",
+          status: "active",
+          subscriberId: "WVM-9948210",
+          beneficiary: { reference: "Patient/pat-8841" },
+          payor: [{ display: "Highmark Blue Cross Blue Shield" }]
+        }
+      },
+      {
+        tag: "ImagingStudy • PACS Routing",
+        valid: false,
+        reason: "Study status is 'cancelled' with 0 instances—do not push to PACS.",
+        data: {
+          resourceType: "ImagingStudy",
+          id: "mri-knee-908",
+          status: "cancelled",
+          modality: [{ system: "http://dicom.nema.org/resources/ontology/DCM", code: "MR" }],
+          subject: { reference: "Patient/pat-4410" },
+          numberOfInstances: 0
+        }
+      }
+    ];
+
+    let deck = [];
+    let current = 0;
+    let score = 0;
+    let streak = 0;
+    let totalAnswered = 0;
+    let totalCorrect = 0;
+    let timeLeft = 30;
+    let timerInterval = null;
+    let locked = false;
+    let muted = false;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, type, duration, delay = 0) {
+      if (muted) return;
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+      gain.gain.setValueAtTime(0.14, audioCtx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + delay);
+      osc.stop(audioCtx.currentTime + delay + duration);
+    }
+
+    function playSuccess() {
+      playTone(587.33, "sine", 0.14, 0);
+      playTone(880.00, "sine", 0.22, 0.09);
+    }
+
+    function playError() {
+      playTone(185.00, "sawtooth", 0.22, 0);
+      playTone(146.83, "sawtooth", 0.28, 0.12);
+    }
+
+    function playTick() {
+      playTone(920, "triangle", 0.06, 0);
+    }
+
+    function playEnd() {
+      playTone(523.25, "sine", 0.18, 0);
+      playTone(392.00, "sine", 0.18, 0.16);
+      playTone(329.63, "sine", 0.35, 0.32);
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      document.getElementById("mute-btn").textContent = muted ? "🔇 Muted" : "🔊 Sound On";
+    }
+
+    function shuffle(array) {
+      const copy = [...array];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function startGame() {
+      score = 0;
+      streak = 0;
+      totalAnswered = 0;
+      totalCorrect = 0;
+      timeLeft = 30;
+      current = 0;
+      locked = false;
+      deck = shuffle(allPackets);
+
+      document.getElementById("score").textContent = score;
+      document.getElementById("streak").textContent = streak;
+      const timerEl = document.getElementById("timer");
+      timerEl.textContent = timeLeft;
+      timerEl.className = "";
+
+      document.getElementById("intro-screen").style.display = "none";
+      document.getElementById("end-screen").style.display = "none";
+      document.getElementById("play-screen").style.display = "block";
+      document.getElementById("feedback").textContent = "";
+
+      loadPacket();
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        timerEl.textContent = timeLeft;
+
+        if (timeLeft <= 5 && timeLeft > 0) {
+          timerEl.className = "timer-crit";
+          playTick();
+        } else if (timeLeft <= 10) {
+          timerEl.className = "timer-warn";
+        }
+
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function loadPacket() {
+      if (current >= deck.length) {
+        deck = shuffle(allPackets);
+        current = 0;
+      }
+      const item = deck[current];
+      document.getElementById("packet-tag").textContent = item.tag;
+      document.getElementById("json-display").textContent = JSON.stringify(item.data, null, 2);
+      document.getElementById("btn-admit").disabled = false;
+      document.getElementById("btn-reject").disabled = false;
+      locked = false;
+    }
+
+    function checkAnswer(userSaysValid) {
+      if (locked) return;
+      locked = true;
+      document.getElementById("btn-admit").disabled = true;
+      document.getElementById("btn-reject").disabled = true;
+
+      const item = deck[current];
+      const fb = document.getElementById("feedback");
+      totalAnswered++;
+
+      if (userSaysValid === item.valid) {
+        totalCorrect++;
+        streak++;
+        const bonus = streak >= 3 ? 5 : 0;
+        score += 10 + bonus;
+        fb.style.color = "#4ade80";
+        fb.textContent = `✔ +${10 + bonus} pts! ${item.reason}`;
+        playSuccess();
+      } else {
+        streak = 0;
+        fb.style.color = "#f87171";
+        fb.textContent = `✖ ${item.reason}`;
+        playError();
+      }
+
+      document.getElementById("score").textContent = score;
+      document.getElementById("streak").textContent = streak;
+
+      current++;
+      setTimeout(() => {
+        if (timeLeft > 0) {
+          fb.textContent = "";
+          loadPacket();
+        }
+      }, 1150);
+    }
+
+    function endGame() {
+      clearInterval(timerInterval);
+      locked = true;
+      playEnd();
+
+      const accuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+      document.getElementById("final-score").textContent = score;
+      document.getElementById("final-reviewed").textContent = totalAnswered;
+      document.getElementById("final-accuracy").textContent = `${accuracy}%`;
+
+      document.getElementById("play-screen").style.display = "none";
+      document.getElementById("end-screen").style.display = "block";
+    }
+  </script>
+</body>
+</html>
